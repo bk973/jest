@@ -8,15 +8,25 @@
 
 import crypto from 'crypto';
 import path from 'path';
+import {wrap} from 'jest-snapshot-serializer-raw';
+import stripAnsi from 'strip-ansi';
 import {escapeStrForRegex} from 'jest-regex-util';
-import normalize from '../normalize';
 import Defaults from '../Defaults';
-
 import {DEFAULT_JS_PATTERN} from '../constants';
+import normalize from '../normalize';
 
-const DEFAULT_CSS_PATTERN = '^.+\\.(css)$';
+const DEFAULT_CSS_PATTERN = '\\.(css)$';
 
-jest.mock('jest-resolve').mock('path', () => jest.requireActual('path').posix);
+jest
+  .mock('path', () => jest.requireActual('path').posix)
+  .mock('graceful-fs', () => {
+    const realFs = jest.requireActual('fs');
+
+    return {
+      ...realFs,
+      statSync: () => ({isDirectory: () => true}),
+    };
+  });
 
 let root;
 let expectedPathFooBar;
@@ -24,8 +34,10 @@ let expectedPathFooQux;
 let expectedPathAbs;
 let expectedPathAbsAnother;
 
+let virtualModuleRegexes;
+beforeEach(() => (virtualModuleRegexes = [/jest-circus/, /babel-jest/]));
 const findNodeModule = jest.fn(name => {
-  if (name.match(/jest-jasmine2|babel-jest/)) {
+  if (virtualModuleRegexes.some(regex => regex.test(name))) {
     return name;
   }
   return null;
@@ -45,7 +57,7 @@ beforeEach(() => {
   expectedPathAbs = path.join(root, 'an', 'abs', 'path');
   expectedPathAbsAnother = path.join(root, 'another', 'abs', 'path');
 
-  require('jest-resolve').findNodeModule = findNodeModule;
+  require('jest-resolve').default.findNodeModule = findNodeModule;
 
   jest.spyOn(console, 'warn');
 });
@@ -139,20 +151,6 @@ describe('automock', () => {
     );
 
     expect(options.automock).toBe(false);
-  });
-});
-
-describe('browser', () => {
-  it('falsy browser is not overwritten', () => {
-    const {options} = normalize(
-      {
-        browser: true,
-        rootDir: '/root/path/foo',
-      },
-      {},
-    );
-
-    expect(options.browser).toBe(true);
   });
 });
 
@@ -308,7 +306,7 @@ describe('roots', () => {
 describe('transform', () => {
   let Resolver;
   beforeEach(() => {
-    Resolver = require('jest-resolve');
+    Resolver = require('jest-resolve').default;
     Resolver.findNodeModule = jest.fn(name => name);
   });
 
@@ -326,12 +324,12 @@ describe('transform', () => {
     );
 
     expect(options.transform).toEqual([
-      [DEFAULT_CSS_PATTERN, '/root/node_modules/jest-regex-util'],
-      [DEFAULT_JS_PATTERN, require.resolve('babel-jest')],
-      ['abs-path', '/qux/quux'],
+      [DEFAULT_CSS_PATTERN, '/root/node_modules/jest-regex-util', {}],
+      [DEFAULT_JS_PATTERN, require.resolve('babel-jest'), {}],
+      ['abs-path', '/qux/quux', {}],
     ]);
   });
-  it("pulls in config if it's passed as an array", () => {
+  it("pulls in config if it's passed as an array, and defaults to empty object", () => {
     const {options} = normalize(
       {
         rootDir: '/root/',
@@ -344,9 +342,9 @@ describe('transform', () => {
       {},
     );
     expect(options.transform).toEqual([
-      [DEFAULT_CSS_PATTERN, '/root/node_modules/jest-regex-util'],
+      [DEFAULT_CSS_PATTERN, '/root/node_modules/jest-regex-util', {}],
       [DEFAULT_JS_PATTERN, require.resolve('babel-jest'), {rootMode: 'upward'}],
-      ['abs-path', '/qux/quux'],
+      ['abs-path', '/qux/quux', {}],
     ]);
   });
 });
@@ -354,7 +352,7 @@ describe('transform', () => {
 describe('haste', () => {
   let Resolver;
   beforeEach(() => {
-    Resolver = require('jest-resolve');
+    Resolver = require('jest-resolve').default;
     Resolver.findNodeModule = jest.fn(name => name);
   });
 
@@ -378,7 +376,7 @@ describe('haste', () => {
 describe('setupFilesAfterEnv', () => {
   let Resolver;
   beforeEach(() => {
-    Resolver = require('jest-resolve');
+    Resolver = require('jest-resolve').default;
     Resolver.findNodeModule = jest.fn(name =>
       name.startsWith('/') ? name : '/root/path/foo' + path.sep + name,
     );
@@ -426,7 +424,7 @@ describe('setupTestFrameworkScriptFile', () => {
 
   beforeEach(() => {
     console.warn.mockImplementation(() => {});
-    Resolver = require('jest-resolve');
+    Resolver = require('jest-resolve').default;
     Resolver.findNodeModule = jest.fn(name =>
       name.startsWith('/') ? name : '/root/path/foo' + path.sep + name,
     );
@@ -663,7 +661,7 @@ describe('modulePathIgnorePatterns', () => {
 });
 
 describe('testRunner', () => {
-  it('defaults to Jasmine 2', () => {
+  it('defaults to Circus', () => {
     const {options} = normalize(
       {
         rootDir: '/root/path/foo',
@@ -671,22 +669,37 @@ describe('testRunner', () => {
       {},
     );
 
-    expect(options.testRunner).toMatch('jasmine2');
+    expect(options.testRunner).toMatch('jest-circus');
   });
 
-  it('is overwritten by argv', () => {
-    const Resolver = require('jest-resolve');
+  it('resolves jasmine', () => {
+    const Resolver = require('jest-resolve').default;
     Resolver.findNodeModule = jest.fn(name => name);
     const {options} = normalize(
       {
         rootDir: '/root/path/foo',
       },
       {
-        testRunner: 'jasmine1',
+        testRunner: 'jasmine2',
       },
     );
 
-    expect(options.testRunner).toBe('jasmine1');
+    expect(options.testRunner).toMatch('jest-jasmine2');
+  });
+
+  it('is overwritten by argv', () => {
+    const Resolver = require('jest-resolve').default;
+    Resolver.findNodeModule = jest.fn(name => name);
+    const {options} = normalize(
+      {
+        rootDir: '/root/path/foo',
+      },
+      {
+        testRunner: 'mocha',
+      },
+    );
+
+    expect(options.testRunner).toBe('mocha');
   });
 });
 
@@ -706,7 +719,7 @@ describe('coverageDirectory', () => {
 describe('testEnvironment', () => {
   let Resolver;
   beforeEach(() => {
-    Resolver = require('jest-resolve');
+    Resolver = require('jest-resolve').default;
     Resolver.findNodeModule = jest.fn(name => {
       if (['jsdom', 'jest-environment-jsdom'].includes(name)) {
         return `node_modules/${name}`;
@@ -760,7 +773,7 @@ describe('testEnvironment', () => {
 describe('babel-jest', () => {
   let Resolver;
   beforeEach(() => {
-    Resolver = require('jest-resolve');
+    Resolver = require('jest-resolve').default;
     Resolver.findNodeModule = jest.fn(name =>
       name.indexOf('babel-jest') === -1
         ? path.sep + 'node_modules' + path.sep + name
@@ -781,7 +794,7 @@ describe('babel-jest', () => {
   });
 
   it('uses babel-jest if babel-jest is explicitly specified in a custom transform options', () => {
-    const customJSPattern = '^.+\\.js$';
+    const customJSPattern = '\\.js$';
     const {options} = normalize(
       {
         rootDir: '/root',
@@ -801,7 +814,7 @@ describe('Upgrade help', () => {
   beforeEach(() => {
     console.warn.mockImplementation(() => {});
 
-    const Resolver = require('jest-resolve');
+    const Resolver = require('jest-resolve').default;
     Resolver.findNodeModule = jest.fn(name => {
       if (name == 'bar/baz') {
         return '/node_modules/bar/baz';
@@ -820,7 +833,7 @@ describe('Upgrade help', () => {
       {},
     );
 
-    expect(options.transform).toEqual([['.*', '/node_modules/bar/baz']]);
+    expect(options.transform).toEqual([['.*', '/node_modules/bar/baz', {}]]);
     expect(options.transformIgnorePatterns).toEqual([
       joinForPattern('bar', 'baz'),
       joinForPattern('qux', 'quux'),
@@ -946,7 +959,7 @@ describe('moduleDirectories', () => {
 
 describe('preset', () => {
   beforeEach(() => {
-    const Resolver = require('jest-resolve');
+    const Resolver = require('jest-resolve').default;
     Resolver.findNodeModule = jest.fn(name => {
       if (name === 'react-native/jest-preset') {
         return '/node_modules/react-native/jest-preset.json';
@@ -956,7 +969,7 @@ describe('preset', () => {
         return '/node_modules/react-native-js-preset/jest-preset.js';
       }
 
-      if (name === 'doesnt-exist') {
+      if (name.includes('doesnt-exist')) {
         return null;
       }
 
@@ -1039,6 +1052,29 @@ describe('preset', () => {
     }).toThrowErrorMatchingSnapshot();
   });
 
+  test('throws when a dependency is missing in the preset', () => {
+    jest.doMock(
+      '/node_modules/react-native-js-preset/jest-preset.js',
+      () => {
+        require('library-that-is-not-installed');
+        return {
+          transform: {},
+        };
+      },
+      {virtual: true},
+    );
+
+    expect(() => {
+      normalize(
+        {
+          preset: 'react-native-js-preset',
+          rootDir: '/root/path/foo',
+        },
+        {},
+      );
+    }).toThrowError(/Cannot find module 'library-that-is-not-installed'/);
+  });
+
   test('throws when preset is invalid', () => {
     jest.doMock('/node_modules/react-native/jest-preset.json', () =>
       jest.requireActual('./jest-preset.json'),
@@ -1090,7 +1126,7 @@ describe('preset', () => {
   });
 
   test('searches for .json and .js preset files', () => {
-    const Resolver = require('jest-resolve');
+    const Resolver = require('jest-resolve').default;
 
     normalize(
       {
@@ -1112,20 +1148,28 @@ describe('preset', () => {
         preset: 'react-native',
         rootDir: '/root/path/foo',
         setupFiles: ['a'],
+        setupFilesAfterEnv: ['a'],
         transform: {a: 'a'},
       },
       {},
     );
 
-    expect(options.moduleNameMapper).toEqual([['a', 'a'], ['b', 'b']]);
+    expect(options.moduleNameMapper).toEqual([
+      ['a', 'a'],
+      ['b', 'b'],
+    ]);
     expect(options.modulePathIgnorePatterns).toEqual(['b', 'a']);
     expect(options.setupFiles.sort()).toEqual([
       '/node_modules/a',
       '/node_modules/b',
     ]);
+    expect(options.setupFilesAfterEnv.sort()).toEqual([
+      '/node_modules/a',
+      '/node_modules/b',
+    ]);
     expect(options.transform).toEqual([
-      ['a', '/node_modules/a'],
-      ['b', '/node_modules/b'],
+      ['a', '/node_modules/a', {}],
+      ['b', '/node_modules/b', {}],
     ]);
   });
 
@@ -1163,7 +1207,7 @@ describe('preset', () => {
       c: 'cc',
       a: 'aa',
     };
-    /* eslint-disable sort-keys */
+    /* eslint-enable */
     const {options} = normalize(
       {
         preset: 'react-native',
@@ -1174,10 +1218,10 @@ describe('preset', () => {
     );
 
     expect(options.transform).toEqual([
-      ['e', '/node_modules/ee'],
-      ['b', '/node_modules/bb'],
-      ['c', '/node_modules/cc'],
-      ['a', '/node_modules/aa'],
+      ['e', '/node_modules/ee', {}],
+      ['b', '/node_modules/bb', {}],
+      ['c', '/node_modules/cc', {}],
+      ['a', '/node_modules/aa', {}],
     ]);
   });
 
@@ -1194,50 +1238,111 @@ describe('preset', () => {
   });
 });
 
-describe('preset without setupFiles', () => {
-  let Resolver;
+describe('preset with globals', () => {
   beforeEach(() => {
-    Resolver = require('jest-resolve');
-    Resolver.findNodeModule = jest.fn(
-      name => path.sep + 'node_modules' + path.sep + name,
-    );
-  });
+    const Resolver = require('jest-resolve').default;
+    Resolver.findNodeModule = jest.fn(name => {
+      if (name === 'global-foo/jest-preset') {
+        return '/node_modules/global-foo/jest-preset.json';
+      }
 
-  beforeAll(() => {
+      return '/node_modules/' + name;
+    });
     jest.doMock(
-      '/node_modules/react-foo/jest-preset',
+      '/node_modules/global-foo/jest-preset.json',
       () => ({
-        moduleNameMapper: {b: 'b'},
-        modulePathIgnorePatterns: ['b'],
+        globals: {
+          __DEV__: false,
+          config: {
+            hereToStay: 'This should stay here',
+          },
+          myString: 'hello world',
+        },
       }),
       {virtual: true},
     );
   });
 
-  afterAll(() => {
-    jest.dontMock('/node_modules/react-foo/jest-preset');
+  afterEach(() => {
+    jest.dontMock('/node_modules/global-foo/jest-preset.json');
   });
 
-  it('should normalize setupFiles correctly', () => {
+  test('should merge the globals preset correctly', () => {
     const {options} = normalize(
       {
-        preset: 'react-foo',
+        globals: {
+          __DEV__: true,
+          config: {
+            sideBySide: 'This should also live another day',
+          },
+          myString: 'hello sunshine',
+          textValue: 'This is just text',
+        },
+        preset: 'global-foo',
         rootDir: '/root/path/foo',
-        setupFiles: ['a'],
       },
       {},
     );
 
-    expect(options).toEqual(
-      expect.objectContaining({setupFiles: ['/node_modules/a']}),
-    );
+    expect(options.globals).toEqual({
+      __DEV__: true,
+      config: {
+        hereToStay: 'This should stay here',
+        sideBySide: 'This should also live another day',
+      },
+      myString: 'hello sunshine',
+      textValue: 'This is just text',
+    });
   });
 });
+
+describe.each(['setupFiles', 'setupFilesAfterEnv'])(
+  'preset without %s',
+  configKey => {
+    let Resolver;
+    beforeEach(() => {
+      Resolver = require('jest-resolve').default;
+      Resolver.findNodeModule = jest.fn(
+        name => path.sep + 'node_modules' + path.sep + name,
+      );
+    });
+
+    beforeAll(() => {
+      jest.doMock(
+        '/node_modules/react-foo/jest-preset',
+        () => ({
+          moduleNameMapper: {b: 'b'},
+          modulePathIgnorePatterns: ['b'],
+        }),
+        {virtual: true},
+      );
+    });
+
+    afterAll(() => {
+      jest.dontMock('/node_modules/react-foo/jest-preset');
+    });
+
+    it(`should normalize ${configKey} correctly`, () => {
+      const {options} = normalize(
+        {
+          [configKey]: ['a'],
+          preset: 'react-foo',
+          rootDir: '/root/path/foo',
+        },
+        {},
+      );
+
+      expect(options).toEqual(
+        expect.objectContaining({[configKey]: ['/node_modules/a']}),
+      );
+    });
+  },
+);
 
 describe('runner', () => {
   let Resolver;
   beforeEach(() => {
-    Resolver = require('jest-resolve');
+    Resolver = require('jest-resolve').default;
     Resolver.findNodeModule = jest.fn(name => {
       if (['eslint', 'jest-runner-eslint', 'my-runner-foo'].includes(name)) {
         return `node_modules/${name}`;
@@ -1295,7 +1400,7 @@ describe('runner', () => {
 describe('watchPlugins', () => {
   let Resolver;
   beforeEach(() => {
-    Resolver = require('jest-resolve');
+    Resolver = require('jest-resolve').default;
     Resolver.findNodeModule = jest.fn(name => {
       if (
         ['typeahead', 'jest-watch-typeahead', 'my-watch-plugin'].includes(name)
@@ -1429,7 +1534,7 @@ describe('testPathPattern', () => {
       describe('win32', () => {
         beforeEach(() => {
           jest.mock('path', () => jest.requireActual('path').win32);
-          require('jest-resolve').findNodeModule = findNodeModule;
+          require('jest-resolve').default.findNodeModule = findNodeModule;
         });
 
         afterEach(() => {
@@ -1465,6 +1570,13 @@ describe('testPathPattern', () => {
 
           expect(options.testPathPattern).toBe('a\\\\b|c\\\\d');
         });
+
+        it('coerces all patterns to strings', () => {
+          const argv = {[opt.property]: [1]};
+          const {options} = normalize(initialOptions, argv);
+
+          expect(options.testPathPattern).toBe('1');
+        });
       });
     });
   }
@@ -1493,10 +1605,10 @@ describe('moduleFileExtensions', () => {
 
     expect(options.moduleFileExtensions).toEqual([
       'js',
-      'json',
       'jsx',
       'ts',
       'tsx',
+      'json',
       'node',
     ]);
   });
@@ -1506,8 +1618,8 @@ describe('moduleFileExtensions', () => {
       expect(() =>
         normalize(
           {
-            rootDir: '/root/',
             moduleFileExtensions: ['json', 'jsx'],
+            rootDir: '/root/',
             runner,
           },
           {},
@@ -1520,8 +1632,8 @@ describe('moduleFileExtensions', () => {
     expect(() =>
       normalize(
         {
-          rootDir: '/root/',
           moduleFileExtensions: ['json', 'jsx'],
+          rootDir: '/root/',
           runner: './', // does not need to be a valid runner for this validation
         },
         {},
@@ -1540,8 +1652,8 @@ describe('cwd', () => {
     console.warn.mockImplementation(() => {});
     const {options} = normalize(
       {
-        rootDir: '/root/',
         cwd: '/tmp/config-sets-cwd-itself',
+        rootDir: '/root/',
       },
       {},
     );
@@ -1571,14 +1683,36 @@ describe('displayName', () => {
       expect(() => {
         normalize(
           {
-            rootDir: '/root/',
             displayName,
+            rootDir: '/root/',
           },
           {},
         );
       }).toThrowErrorMatchingSnapshot();
     },
   );
+
+  it.each([
+    undefined,
+    'jest-runner',
+    'jest-runner-eslint',
+    'jest-runner-tslint',
+    'jest-runner-tsc',
+  ])('generates a default color for the runner %s', runner => {
+    virtualModuleRegexes.push(/jest-runner-.+/);
+    const {
+      options: {displayName},
+    } = normalize(
+      {
+        displayName: 'project',
+        rootDir: '/root/',
+        runner,
+      },
+      {},
+    );
+    expect(displayName.name).toBe('project');
+    expect(displayName.color).toMatchSnapshot();
+  });
 });
 
 describe('testTimeout', () => {
@@ -1594,5 +1728,38 @@ describe('testTimeout', () => {
     expect(() =>
       normalize({rootDir: '/root/', testTimeout: -1}, {}),
     ).toThrowErrorMatchingSnapshot();
+  });
+});
+
+describe('extensionsToTreatAsEsm', () => {
+  function matchErrorSnapshot(callback) {
+    expect.assertions(1);
+
+    try {
+      callback();
+    } catch (error) {
+      expect(wrap(stripAnsi(error.message).trim())).toMatchSnapshot();
+    }
+  }
+
+  it('should pass valid config through', () => {
+    const {options} = normalize(
+      {extensionsToTreatAsEsm: ['.ts'], rootDir: '/root/'},
+      {},
+    );
+
+    expect(options.extensionsToTreatAsEsm).toEqual(['.ts']);
+  });
+
+  it('should enforce leading dots', () => {
+    matchErrorSnapshot(() =>
+      normalize({extensionsToTreatAsEsm: ['ts'], rootDir: '/root/'}, {}),
+    );
+  });
+
+  it.each(['.js', '.mjs', '.cjs'])('throws on %s', ext => {
+    matchErrorSnapshot(() =>
+      normalize({extensionsToTreatAsEsm: [ext], rootDir: '/root/'}, {}),
+    );
   });
 });

@@ -6,16 +6,17 @@
  */
 
 import {tmpdir} from 'os';
-import path from 'path';
-import {Config} from '@jest/types';
+import * as path from 'path';
+import {makeProjectConfig} from '@jest/test-utils';
+import type {Config} from '@jest/types';
+import type Resolver from 'jest-resolve';
 import {buildSnapshotResolver} from 'jest-snapshot';
-import {makeProjectConfig} from '../../../../TestUtils';
-
-import DependencyResolver from '../index';
+import {DependencyResolver} from '../index';
 
 const maxWorkers = 1;
 let dependencyResolver: DependencyResolver;
-let Runtime;
+let runtimeContextResolver: Resolver;
+let Runtime: typeof import('jest-runtime');
 let config: Config.ProjectConfig;
 const cases: Record<string, jest.Mock> = {
   fancyCondition: jest.fn(path => path.length > 10),
@@ -25,15 +26,17 @@ const filter = (path: Config.Path) =>
   Object.keys(cases).every(key => cases[key](path));
 
 beforeEach(() => {
-  Runtime = require('jest-runtime');
+  Runtime = require('jest-runtime').default;
   config = makeProjectConfig({
     cacheDirectory: path.resolve(tmpdir(), 'jest-resolve-dependencies-test'),
     moduleDirectories: ['node_modules'],
+    moduleNameMapper: [['^\\$asdf/(.*)$', '<rootDir>/$1']],
     rootDir: '.',
     roots: ['./packages/jest-resolve-dependencies'],
   });
   return Runtime.createContext(config, {maxWorkers, watchman: false}).then(
-    (runtimeContext: any) => {
+    runtimeContext => {
+      runtimeContextResolver = runtimeContext.resolver;
       dependencyResolver = new DependencyResolver(
         runtimeContext.resolver,
         runtimeContext.hasteFS,
@@ -55,6 +58,18 @@ test('resolves dependencies for existing path', () => {
   expect(resolved).toEqual([
     expect.stringContaining('jest-resolve-dependencies'),
     expect.stringContaining('jest-regex-util'),
+  ]);
+});
+
+test('includes the mocks of dependencies as dependencies', () => {
+  const resolved = dependencyResolver.resolve(
+    path.resolve(__dirname, '__fixtures__/hasMocked/file.test.js'),
+  );
+
+  expect(resolved).toEqual([
+    expect.stringContaining(path.join('hasMocked', 'file.js')),
+    expect.stringContaining(path.join('hasMocked', '__mocks__', 'file.js')),
+    expect.stringContaining(path.join('__mocks__', 'fake-node-module.js')),
   ]);
 });
 
@@ -89,6 +104,19 @@ test('resolves inverse dependencies for existing path', () => {
   ]);
 });
 
+test('resolves inverse dependencies of mock', () => {
+  const paths = new Set([
+    path.resolve(__dirname, '__fixtures__/hasMocked/__mocks__/file.js'),
+  ]);
+  const resolved = dependencyResolver.resolveInverse(paths, filter);
+
+  expect(resolved).toEqual([
+    expect.stringContaining(
+      path.join('__tests__/__fixtures__/hasMocked/file.test.js'),
+    ),
+  ]);
+});
+
 test('resolves inverse dependencies from available snapshot', () => {
   const paths = new Set([
     path.resolve(__dirname, '__fixtures__/file.js'),
@@ -105,4 +133,33 @@ test('resolves inverse dependencies from available snapshot', () => {
       ),
     ]),
   );
+});
+
+test('resolves dependencies correctly when dependency resolution fails', () => {
+  jest.spyOn(runtimeContextResolver, 'resolveModule').mockImplementation(() => {
+    throw new Error('resolveModule has failed');
+  });
+  jest.spyOn(runtimeContextResolver, 'getMockModule').mockImplementation(() => {
+    throw new Error('getMockModule has failed');
+  });
+
+  const resolved = dependencyResolver.resolve(
+    path.resolve(__dirname, '__fixtures__', 'file.test.js'),
+  );
+
+  expect(resolved).toEqual([]);
+});
+
+test('resolves dependencies correctly when mock dependency resolution fails', () => {
+  jest.spyOn(runtimeContextResolver, 'getMockModule').mockImplementation(() => {
+    throw new Error('getMockModule has failed');
+  });
+
+  const resolved = dependencyResolver.resolve(
+    path.resolve(__dirname, '__fixtures__', 'file.test.js'),
+  );
+
+  expect(resolved).toEqual([
+    expect.stringContaining(path.join('__tests__', '__fixtures__', 'file.js')),
+  ]);
 });

@@ -6,15 +6,20 @@
  *
  */
 
-import {Config} from '@jest/types';
-import {SerializableError, TestResult} from '@jest/test-result';
-import HasteMap, {SerializableModuleMap} from 'jest-haste-map';
-import exit from 'exit';
+import exit = require('exit');
+import type {SerializableError, TestResult} from '@jest/test-result';
+import type {Config} from '@jest/types';
+import {ModuleMap, SerializableModuleMap} from 'jest-haste-map';
 import {separateMessageFromStack} from 'jest-message-util';
+import type Resolver from 'jest-resolve';
 import Runtime from 'jest-runtime';
-import Resolver from 'jest-resolve';
-import {ErrorWithCode, TestRunnerSerializedContext} from './types';
+import {messageParent} from 'jest-worker';
 import runTest from './runTest';
+import type {
+  ErrorWithCode,
+  TestFileEvent,
+  TestRunnerSerializedContext,
+} from './types';
 
 export type SerializableResolver = {
   config: Config.ProjectConfig;
@@ -63,16 +68,20 @@ const getResolver = (config: Config.ProjectConfig) => {
 
 export function setup(setupData: {
   serializableResolvers: Array<SerializableResolver>;
-}) {
+}): void {
   // Module maps that will be needed for the test runs are passed.
   for (const {
     config,
     serializableModuleMap,
   } of setupData.serializableResolvers) {
-    const moduleMap = HasteMap.ModuleMap.fromJSON(serializableModuleMap);
+    const moduleMap = ModuleMap.fromJSON(serializableModuleMap);
     resolvers.set(config.name, Runtime.createResolver(config, moduleMap));
   }
 }
+
+const sendMessageToJest: TestFileEvent = (eventName, args) => {
+  messageParent([eventName, args]);
+};
 
 export async function worker({
   config,
@@ -89,7 +98,11 @@ export async function worker({
       context && {
         ...context,
         changedFiles: context.changedFiles && new Set(context.changedFiles),
+        sourcesRelatedToTestsInChangedFiles:
+          context.sourcesRelatedToTestsInChangedFiles &&
+          new Set(context.sourcesRelatedToTestsInChangedFiles),
       },
+      sendMessageToJest,
     );
   } catch (error) {
     throw formatError(error);

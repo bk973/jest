@@ -8,19 +8,20 @@
 declare const jestGlobalConfig: Config.GlobalConfig;
 declare const jestProjectConfig: Config.ProjectConfig;
 
-import path from 'path';
-import repl from 'repl';
-import vm from 'vm';
-import {Transformer} from '@jest/transform';
-import {Config} from '@jest/types';
+import * as path from 'path';
+import * as repl from 'repl';
+import {runInThisContext} from 'vm';
+import type {Transformer} from '@jest/transform';
+import type {Config} from '@jest/types';
 
 let transformer: Transformer;
+let transformerConfig: unknown;
 
 const evalCommand: repl.REPLEval = (
   cmd: string,
-  _context: any,
+  _context: unknown,
   _filename: string,
-  callback: (e: Error | null, result?: any) => void,
+  callback: (e: Error | null, result?: unknown) => void,
 ) => {
   let result;
   try {
@@ -28,14 +29,24 @@ const evalCommand: repl.REPLEval = (
       const transformResult = transformer.process(
         cmd,
         jestGlobalConfig.replname || 'jest.js',
-        jestProjectConfig,
+        {
+          cacheFS: new Map<string, string>(),
+          config: jestProjectConfig,
+          configString: JSON.stringify(jestProjectConfig),
+          instrument: false,
+          supportsDynamicImport: false,
+          supportsExportNamespaceFrom: false,
+          supportsStaticESM: false,
+          supportsTopLevelAwait: false,
+          transformerConfig,
+        },
       );
       cmd =
         typeof transformResult === 'string'
           ? transformResult
           : transformResult.code;
     }
-    result = vm.runInThisContext(cmd);
+    result = runInThisContext(cmd);
   } catch (e) {
     return callback(isRecoverableError(e) ? new repl.Recoverable(e) : e);
   }
@@ -60,6 +71,7 @@ if (jestProjectConfig.transform) {
   for (let i = 0; i < jestProjectConfig.transform.length; i++) {
     if (new RegExp(jestProjectConfig.transform[i][0]).test('foobar.js')) {
       transformerPath = jestProjectConfig.transform[i][1];
+      transformerConfig = jestProjectConfig.transform[i][2];
       break;
     }
   }

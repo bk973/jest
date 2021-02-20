@@ -5,14 +5,13 @@
  * LICENSE file in the root directory of this source tree.
  */
 
-import {shouldInstrument} from '@jest/transform';
+import os from 'os';
+import path from 'path';
 import istanbulCoverage from 'istanbul-lib-coverage';
 import libSourceMaps from 'istanbul-lib-source-maps';
+import {makeGlobalConfig, makeProjectConfig} from '@jest/test-utils';
+import {shouldInstrument} from '@jest/transform';
 import generateEmptyCoverage from '../generateEmptyCoverage';
-
-import path from 'path';
-import os from 'os';
-import {makeGlobalConfig, makeProjectConfig} from '../../../../TestUtils';
 
 jest.mock('@jest/transform', () => ({
   ...jest.requireActual('@jest/transform'),
@@ -22,7 +21,7 @@ jest.mock('@jest/transform', () => ({
 describe('generateEmptyCoverage', () => {
   const coverageMap = istanbulCoverage.createCoverageMap({});
   const sourceMapStore = libSourceMaps.createSourceMapStore();
-  const rootDir = '/tmp';
+  const rootDir = __dirname;
   const filepath = path.join(rootDir, './sum.js');
 
   it('generates an empty coverage object for a file without running it', () => {
@@ -49,8 +48,9 @@ describe('generateEmptyCoverage', () => {
       makeGlobalConfig(),
       makeProjectConfig({
         cacheDirectory: os.tmpdir(),
+        cwd: rootDir,
         rootDir,
-        transform: [['^.+\\.js$', require.resolve('babel-jest')]],
+        transform: [['\\.js$', require.resolve('babel-jest')]],
       }),
     );
 
@@ -67,7 +67,6 @@ describe('generateEmptyCoverage', () => {
     }
 
     expect(coverage.data).toMatchSnapshot({
-      hash: expect.any(String),
       path: expect.any(String),
     });
   });
@@ -93,8 +92,9 @@ describe('generateEmptyCoverage', () => {
       makeGlobalConfig(),
       makeProjectConfig({
         cacheDirectory: os.tmpdir(),
+        cwd: rootDir,
         rootDir,
-        transform: [['^.+\\.js$', require.resolve('babel-jest')]],
+        transform: [['\\.js$', require.resolve('babel-jest')]],
       }),
     );
 
@@ -121,8 +121,9 @@ describe('generateEmptyCoverage', () => {
       makeGlobalConfig(),
       makeProjectConfig({
         cacheDirectory: os.tmpdir(),
+        cwd: rootDir,
         rootDir,
-        transform: [['^.+\\.js$', require.resolve('babel-jest')]],
+        transform: [['\\.js$', require.resolve('babel-jest')]],
       }),
     );
 

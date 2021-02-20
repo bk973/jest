@@ -5,18 +5,17 @@
  * LICENSE file in the root directory of this source tree.
  */
 
-import fs from 'fs';
-import {Config} from '@jest/types';
-import ModuleMap from './ModuleMap';
-import HasteFS from './HasteFS';
+import type {Stats} from 'graceful-fs';
+import type {Config} from '@jest/types';
+import type HasteFS from './HasteFS';
+import type ModuleMap from './ModuleMap';
 
 export type IgnoreMatcher = (item: string) => boolean;
-export type Mapper = (item: string) => Array<string> | null;
 
 export type WorkerMessage = {
   computeDependencies: boolean;
   computeSha1: boolean;
-  dependencyExtractor?: string;
+  dependencyExtractor?: string | null;
   rootDir: string;
   filePath: string;
   hasteImplModulePath?: string;
@@ -35,7 +34,6 @@ export type CrawlerOptions = {
   extensions: Array<string>;
   forceNodeFilesystemAPI: boolean;
   ignore: IgnoreMatcher;
-  mapper?: Mapper | null;
   rootDir: string;
   roots: Array<string>;
 };
@@ -57,7 +55,8 @@ export type FileMetaData = [
 
 export type MockData = Map<string, Config.Path>;
 export type ModuleMapData = Map<string, ModuleMapItem>;
-export type WatchmanClocks = Map<Config.Path, string>;
+export type WatchmanClockSpec = string | {scm: {'mergebase-with': string}};
+export type WatchmanClocks = Map<Config.Path, WatchmanClockSpec>;
 export type HasteRegExp = RegExp | ((str: string) => boolean);
 
 export type DuplicatesSet = Map<string, /* type */ number>;
@@ -107,7 +106,7 @@ export type HTypeValue = HType[keyof HType];
 
 export type EventsQueue = Array<{
   filePath: Config.Path;
-  stat: fs.Stats | undefined;
+  stat: Stats | undefined;
   type: string;
 }>;
 

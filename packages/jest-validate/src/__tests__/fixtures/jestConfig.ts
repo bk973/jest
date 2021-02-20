@@ -5,9 +5,9 @@
  * LICENSE file in the root directory of this source tree.
  */
 
-import os from 'os';
-import path from 'path';
-import chalk from 'chalk';
+import {tmpdir} from 'os';
+import * as path from 'path';
+import chalk = require('chalk');
 
 const NODE_MODULES = path.sep + 'node_modules' + path.sep;
 const replacePathSepForRegex = (string: string) => {
@@ -23,15 +23,13 @@ const defaultConfig = {
   automock: false,
   bail: 0,
   browser: false,
-  cacheDirectory: path.join(os.tmpdir(), 'jest'),
+  cacheDirectory: path.join(tmpdir(), 'jest'),
   clearMocks: false,
   coveragePathIgnorePatterns: [NODE_MODULES_REGEXP],
   coverageReporters: ['json', 'text', 'lcov', 'clover'],
   expand: false,
   globals: {},
-  haste: {
-    providesModuleNodeModules: [],
-  },
+  haste: {},
   moduleDirectories: ['node_modules'],
   moduleFileExtensions: ['js', 'json', 'jsx', 'node'],
   moduleNameMapper: {},
@@ -82,15 +80,14 @@ const validConfig = {
   expand: false,
   forceExit: false,
   globals: {},
-  haste: {
-    providesModuleNodeModules: ['react', 'react-native'],
-  },
+  haste: {},
   logHeapUsage: true,
   moduleDirectories: ['node_modules'],
   moduleFileExtensions: ['js', 'json', 'jsx', 'node'],
   moduleLoader: '<rootDir>',
   moduleNameMapper: {
     '^React$': '<rootDir>/node_modules/react',
+    '^Vue$': ['<rootDir>/node_modules/vue', '<rootDir>/node_modules/vue3'],
   },
   modulePathIgnorePatterns: ['<rootDir>/build/'],
   modulePaths: ['/shared/vendor/modules'],
@@ -114,11 +111,11 @@ const validConfig = {
   testPathIgnorePatterns: [NODE_MODULES_REGEXP],
   testRegex: '(/__tests__/.*|(\\.|/)(test|spec))\\.[jt]sx?$',
   testResultsProcessor: 'processor-node-module',
-  testRunner: 'jasmine2',
+  testRunner: 'circus',
   testURL: 'http://localhost',
   timers: 'real',
   transform: {
-    '^.+\\.js$': '<rootDir>/preprocessor.js',
+    '\\.js$': '<rootDir>/preprocessor.js',
   },
   transformIgnorePatterns: [NODE_MODULES_REGEXP],
   unmockedModulePathPatterns: ['mock'],
@@ -130,7 +127,8 @@ const validConfig = {
   watchman: true,
 };
 
-const format = (value: string) => require('pretty-format')(value, {min: true});
+const format = (value: string) =>
+  require('pretty-format').format(value, {min: true});
 
 const deprecatedConfig = {
   preprocessorIgnorePatterns: (config: Record<string, any>) =>

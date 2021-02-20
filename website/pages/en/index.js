@@ -5,15 +5,15 @@
  * LICENSE file in the root directory of this source tree.
  */
 const React = require('react');
-
 const CompLibrary = require('../../core/CompLibrary.js');
+const translate = require('../../server/translate.js').translate;
+const backers = require(process.cwd() + '/backers.json');
+const siteConfig = require(process.cwd() + '/siteConfig.js');
+
 const MarkdownBlock = CompLibrary.MarkdownBlock; /* Used to read markdown */
 const Container = CompLibrary.Container;
 const GridBlock = CompLibrary.GridBlock;
 
-const translate = require('../../server/translate.js').translate;
-const backers = require(process.cwd() + '/backers.json');
-const siteConfig = require(process.cwd() + '/siteConfig.js');
 const getDocsUrl = (url, language) =>
   siteConfig.baseUrl + 'docs/' + language + url;
 const getUrl = (url, language) => siteConfig.baseUrl + language + url;
@@ -45,6 +45,7 @@ const Sponsor = ({
     className="sponsor-item"
     title={`$${totalDonations.value} by ${name || slug}`}
     target="_blank"
+    rel="nofollow noopener"
     href={website || `https://opencollective.com/${slug}`}
   >
     {
@@ -66,6 +67,7 @@ const Backer = ({
     className="backer-item"
     title={`$${totalDonations.value} by ${name || slug}`}
     target="_blank"
+    rel="nofollow noopener"
     href={website || `https://opencollective.com/${slug}`}
   >
     {
@@ -375,7 +377,7 @@ class Index extends React.Component {
                   content: (
                     <translate>
                       Generate code coverage by adding the flag
-                      [`--coverage`](https://jestjs.io/docs/en/cli.html#coverage).
+                      [`--coverage`](https://jestjs.io/docs/en/cli.html#--coverageboolean).
                       No additional setup needed. Jest can collect code coverage
                       information from entire projects, including untested
                       files.
@@ -398,7 +400,7 @@ class Index extends React.Component {
                 {
                   content: (
                     <translate>
-                      Jest uses a custom resolver for imports in your tests
+                      Jest uses a custom resolver for imports in your tests,
                       making it simple to mock any object outside of your test’s
                       scope. You can use mocked imports with the rich [Mock
                       Functions](https://jestjs.io/docs/en/mock-functions.html)
@@ -419,11 +421,11 @@ class Index extends React.Component {
                 {
                   content: (
                     <translate>
-                      Tests fail, when they do Jest provides rich context why,
-                      here’s some examples:
+                      Tests fail—when they do, Jest provides rich context why.
+                      Here are some examples:
                     </translate>
                   ),
-                  image: '/img/content/matchers/different-types.png',
+                  image: '/img/content/matchers/toBe.png',
                   imageAlign: 'right',
                   title: <translate>Great Exceptions</translate>,
                 },
@@ -538,16 +540,16 @@ class Index extends React.Component {
                   <MarkdownBlock>
                     <translate>
                       A lot of people! With
-                      [16m](https://www.npmjs.com/package/jest) downloads in the
-                      last 30 days, and used on over
-                      [1,130,000](https://github.com/facebook/jest/network/dependents)
+                      [20m](https://www.npmjs.com/package/jest) downloads in the
+                      last month, and used on over
+                      [1,293,000](https://github.com/facebook/jest/network/dependents)
                       public repos on GitHub. Jest is used extensively at these
                       companies:
                     </translate>
                   </MarkdownBlock>
                   <div className="gridBlock logos">
                     {showcase}
-                    <p>And many others</p>
+                    <p className="others">And many others</p>
                   </div>
                 </div>
               </div>

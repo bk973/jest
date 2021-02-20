@@ -5,50 +5,74 @@
  * LICENSE file in the root directory of this source tree.
  */
 
-import crypto from 'crypto';
-import fs from 'fs';
-import path from 'path';
-import {Transformer} from '@jest/transform';
-import {Config} from '@jest/types';
+import {createHash} from 'crypto';
+import * as path from 'path';
 import {
-  loadPartialConfig,
   PartialConfig,
   TransformOptions,
   transformSync as babelTransform,
 } from '@babel/core';
-import chalk from 'chalk';
-import slash from 'slash';
+import chalk = require('chalk');
+import * as fs from 'graceful-fs';
+import slash = require('slash');
+import type {
+  TransformOptions as JestTransformOptions,
+  Transformer,
+} from '@jest/transform';
+import type {Config} from '@jest/types';
+import {loadPartialConfig} from './loadBabelConfig';
 
 const THIS_FILE = fs.readFileSync(__filename);
 const jestPresetPath = require.resolve('babel-preset-jest');
 const babelIstanbulPlugin = require.resolve('babel-plugin-istanbul');
 
-// Narrow down the types
-interface BabelJestTransformer extends Transformer {
-  canInstrument: true;
-}
+type CreateTransformer = Transformer<TransformOptions>['createTransformer'];
 
-const createTransformer = (
-  options: TransformOptions = {},
-): BabelJestTransformer => {
-  options = {
-    ...options,
+const createTransformer: CreateTransformer = userOptions => {
+  const inputOptions = userOptions ?? {};
+
+  const options = {
+    ...inputOptions,
     caller: {
       name: 'babel-jest',
+      supportsDynamicImport: false,
+      supportsExportNamespaceFrom: false,
       supportsStaticESM: false,
+      supportsTopLevelAwait: false,
+      ...inputOptions.caller,
     },
     compact: false,
-    plugins: (options && options.plugins) || [],
-    presets: ((options && options.presets) || []).concat(jestPresetPath),
+    plugins: inputOptions.plugins ?? [],
+    presets: (inputOptions.presets ?? []).concat(jestPresetPath),
     sourceMaps: 'both',
-  };
+  } as const;
 
   function loadBabelConfig(
     cwd: Config.Path,
     filename: Config.Path,
+    transformOptions: JestTransformOptions,
   ): PartialConfig {
     // `cwd` first to allow incoming options to override it
-    const babelConfig = loadPartialConfig({cwd, ...options, filename});
+    const babelConfig = loadPartialConfig({
+      cwd,
+      ...options,
+      caller: {
+        ...options.caller,
+        supportsDynamicImport:
+          transformOptions.supportsDynamicImport ??
+          options.caller.supportsDynamicImport,
+        supportsExportNamespaceFrom:
+          transformOptions.supportsExportNamespaceFrom ??
+          options.caller.supportsExportNamespaceFrom,
+        supportsStaticESM:
+          transformOptions.supportsStaticESM ??
+          options.caller.supportsStaticESM,
+        supportsTopLevelAwait:
+          transformOptions.supportsTopLevelAwait ??
+          options.caller.supportsTopLevelAwait,
+      },
+      filename,
+    });
 
     if (!babelConfig) {
       throw new Error(
@@ -65,27 +89,27 @@ const createTransformer = (
 
   return {
     canInstrument: true,
-    getCacheKey(
-      fileData,
-      filename,
-      configString,
-      {config, instrument, rootDir},
-    ) {
-      const babelOptions = loadBabelConfig(config.cwd, filename);
+    getCacheKey(sourceText, sourcePath, transformOptions) {
+      const {config, configString, instrument} = transformOptions;
+
+      const babelOptions = loadBabelConfig(
+        config.cwd,
+        sourcePath,
+        transformOptions,
+      );
       const configPath = [
         babelOptions.config || '',
         babelOptions.babelrc || '',
       ];
 
-      return crypto
-        .createHash('md5')
+      return createHash('md5')
         .update(THIS_FILE)
         .update('\0', 'utf8')
         .update(JSON.stringify(babelOptions.options))
         .update('\0', 'utf8')
-        .update(fileData)
+        .update(sourceText)
         .update('\0', 'utf8')
-        .update(path.relative(rootDir, filename))
+        .update(path.relative(config.rootDir, sourcePath))
         .update('\0', 'utf8')
         .update(configString)
         .update('\0', 'utf8')
@@ -98,10 +122,16 @@ const createTransformer = (
         .update(process.env.BABEL_ENV || '')
         .digest('hex');
     },
-    process(src, filename, config, transformOptions) {
-      const babelOptions = {...loadBabelConfig(config.cwd, filename).options};
+    process(sourceText, sourcePath, transformOptions) {
+      const babelOptions = {
+        ...loadBabelConfig(
+          transformOptions.config.cwd,
+          sourcePath,
+          transformOptions,
+        ).options,
+      };
 
-      if (transformOptions && transformOptions.instrument) {
+      if (transformOptions?.instrument) {
         babelOptions.auxiliaryCommentBefore = ' istanbul ignore next ';
         // Copied from jest-runtime transform.js
         babelOptions.plugins = (babelOptions.plugins || []).concat([
@@ -109,14 +139,14 @@ const createTransformer = (
             babelIstanbulPlugin,
             {
               // files outside `cwd` will not be instrumented
-              cwd: config.rootDir,
+              cwd: transformOptions.config.rootDir,
               exclude: [],
             },
           ],
         ]);
       }
 
-      const transformResult = babelTransform(src, babelOptions);
+      const transformResult = babelTransform(sourceText, babelOptions);
 
       if (transformResult) {
         const {code, map} = transformResult;
@@ -125,14 +155,12 @@ const createTransformer = (
         }
       }
 
-      return src;
+      return sourceText;
     },
   };
 };
 
-const transformer: BabelJestTransformer & {
-  createTransformer: (options?: TransformOptions) => BabelJestTransformer;
-} = {
+const transformer: Transformer<TransformOptions> = {
   ...createTransformer(),
   // Assigned here so only the exported transformer has `createTransformer`,
   // instead of all created transformers by the function

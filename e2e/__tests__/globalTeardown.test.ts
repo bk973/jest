@@ -4,22 +4,21 @@
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
  */
-'use strict';
 
-import fs from 'fs';
-import os from 'os';
-import path from 'path';
+import {tmpdir} from 'os';
+import * as path from 'path';
+import * as fs from 'graceful-fs';
 import {createDirectory} from 'jest-util';
+import {cleanup, runYarnInstall} from '../Utils';
 import runJest, {json as runWithJson} from '../runJest';
-import {cleanup, run} from '../Utils';
 
-const DIR = path.join(os.tmpdir(), 'jest-global-teardown');
-const project1DIR = path.join(os.tmpdir(), 'jest-global-teardown-project-1');
-const project2DIR = path.join(os.tmpdir(), 'jest-global-teardown-project-2');
+const DIR = path.join(tmpdir(), 'jest-global-teardown');
+const project1DIR = path.join(tmpdir(), 'jest-global-teardown-project-1');
+const project2DIR = path.join(tmpdir(), 'jest-global-teardown-project-2');
 const e2eDir = path.resolve(__dirname, '../global-teardown');
 
 beforeAll(() => {
-  run('yarn', e2eDir);
+  runYarnInstall(e2eDir);
 });
 
 beforeEach(() => {
@@ -41,7 +40,7 @@ test('globalTeardown is triggered once after all test suites', () => {
     `--testPathPattern=__tests__`,
   ]);
 
-  expect(result.status).toBe(0);
+  expect(result.exitCode).toBe(0);
   const files = fs.readdirSync(DIR);
   expect(files).toHaveLength(1);
   const teardown = fs.readFileSync(path.join(DIR, files[0]), 'utf8');
@@ -50,14 +49,15 @@ test('globalTeardown is triggered once after all test suites', () => {
 
 test('jest throws an error when globalTeardown does not export a function', () => {
   const teardownPath = path.resolve(e2eDir, 'invalidTeardown.js');
-  const {status, stderr} = runJest(e2eDir, [
+  const {exitCode, stderr} = runJest(e2eDir, [
     `--globalTeardown=${teardownPath}`,
     `--testPathPattern=__tests__`,
   ]);
 
-  expect(status).toBe(1);
-  expect(stderr).toMatch(
-    `TypeError: globalTeardown file must export a function at ${teardownPath}`,
+  expect(exitCode).toBe(1);
+  expect(stderr).toContain('Jest: Got error running globalTeardown');
+  expect(stderr).toContain(
+    `globalTeardown file must export a function at ${teardownPath}`,
   );
 });
 
@@ -79,7 +79,7 @@ test('should call globalTeardown function of multiple projects', () => {
 
   const result = runWithJson('global-teardown', [`--config=${configPath}`]);
 
-  expect(result.status).toBe(0);
+  expect(result.exitCode).toBe(0);
 
   expect(fs.existsSync(DIR)).toBe(true);
   expect(fs.existsSync(project1DIR)).toBe(true);
@@ -94,7 +94,7 @@ test('should not call a globalTeardown of a project if there are no tests to run
     '--testPathPattern=project-1',
   ]);
 
-  expect(result.status).toBe(0);
+  expect(result.exitCode).toBe(0);
 
   expect(fs.existsSync(DIR)).toBe(true);
   expect(fs.existsSync(project1DIR)).toBe(true);
@@ -120,13 +120,14 @@ test('globalTeardown throws with named export', () => {
     'invalidTeardownWithNamedExport.js',
   );
 
-  const {status, stderr} = runJest(e2eDir, [
+  const {exitCode, stderr} = runJest(e2eDir, [
     `--globalTeardown=${teardownPath}`,
     `--testPathPattern=__tests__`,
   ]);
 
-  expect(status).toBe(1);
-  expect(stderr).toMatch(
-    `TypeError: globalTeardown file must export a function at ${teardownPath}`,
+  expect(exitCode).toBe(1);
+  expect(stderr).toContain('Jest: Got error running globalTeardown');
+  expect(stderr).toContain(
+    `globalTeardown file must export a function at ${teardownPath}`,
   );
 });

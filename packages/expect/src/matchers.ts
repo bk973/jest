@@ -6,10 +6,13 @@
  *
  */
 
-import getType, {isPrimitive} from 'jest-get-type';
+/* eslint-disable local/ban-types-eventually */
+
+import getType = require('jest-get-type');
 import {
   DIM_COLOR,
   EXPECTED_COLOR,
+  MatcherHintOptions,
   RECEIVED_COLOR,
   SUGGEST_TO_CONTAIN_EQUAL,
   ensureExpectedIsNonNegativeInteger,
@@ -19,14 +22,14 @@ import {
   matcherErrorMessage,
   matcherHint,
   printDiffOrStringify,
-  printReceived,
   printExpected,
+  printReceived,
   printWithType,
   stringify,
-  MatcherHintOptions,
 } from 'jest-matcher-utils';
-import {MatchersObject, MatcherState} from './types';
+import {equals} from './jasmineUtils';
 import {
+  printCloseTo,
   printExpectedConstructorName,
   printExpectedConstructorNameNot,
   printReceivedArrayContainExpectedItem,
@@ -35,6 +38,7 @@ import {
   printReceivedStringContainExpectedResult,
   printReceivedStringContainExpectedSubstring,
 } from './print';
+import type {MatcherState, MatchersObject} from './types';
 import {
   getObjectSubset,
   getPath,
@@ -43,7 +47,6 @@ import {
   subsetEquality,
   typeEquality,
 } from './utils';
-import {equals} from './jasmineUtils';
 
 // Omit colon and one or more spaces, so can call getLabelPrinter.
 const EXPECTED_LABEL = 'Expected';
@@ -63,7 +66,7 @@ const toStrictEqualTesters = [
 type ContainIterable =
   | Array<unknown>
   | Set<unknown>
-  | NodeListOf<any>
+  | NodeListOf<Node>
   | DOMTokenList
   | HTMLCollectionOf<any>;
 
@@ -129,13 +132,33 @@ const matchers: MatchersObject = {
   ) {
     const matcherName = 'toBeCloseTo';
     const secondArgument = arguments.length === 3 ? 'precision' : undefined;
+    const isNot = this.isNot;
     const options: MatcherHintOptions = {
-      isNot: this.isNot,
+      isNot,
       promise: this.promise,
       secondArgument,
       secondArgumentColor: (arg: string) => arg,
     };
-    ensureNumbers(received, expected, matcherName, options);
+
+    if (typeof expected !== 'number') {
+      throw new Error(
+        matcherErrorMessage(
+          matcherHint(matcherName, undefined, undefined, options),
+          `${EXPECTED_COLOR('expected')} value must be a number`,
+          printWithType('Expected', expected, printExpected),
+        ),
+      );
+    }
+
+    if (typeof received !== 'number') {
+      throw new Error(
+        matcherErrorMessage(
+          matcherHint(matcherName, undefined, undefined, options),
+          `${RECEIVED_COLOR('received')} value must be a number`,
+          printWithType('Received', received, printReceived),
+        ),
+      );
+    }
 
     let pass = false;
     let expectedDiff = 0;
@@ -160,18 +183,14 @@ const matchers: MatchersObject = {
             ? ''
             : `Received:     ${printReceived(received)}\n` +
               '\n' +
-              `Expected precision:        ${stringify(precision)}\n` +
-              `Expected difference: not < ${printExpected(expectedDiff)}\n` +
-              `Received difference:       ${printReceived(receivedDiff)}`)
+              printCloseTo(receivedDiff, expectedDiff, precision, isNot))
       : () =>
           matcherHint(matcherName, undefined, undefined, options) +
           '\n\n' +
           `Expected: ${printExpected(expected)}\n` +
           `Received: ${printReceived(received)}\n` +
           '\n' +
-          `Expected precision:    ${stringify(precision)}\n` +
-          `Expected difference: < ${printExpected(expectedDiff)}\n` +
-          `Received difference:   ${printReceived(receivedDiff)}`;
+          printCloseTo(receivedDiff, expectedDiff, precision, isNot);
 
     return {message, pass};
   },
@@ -212,7 +231,11 @@ const matchers: MatchersObject = {
     return {message, pass};
   },
 
-  toBeGreaterThan(this: MatcherState, received: number, expected: number) {
+  toBeGreaterThan(
+    this: MatcherState,
+    received: number | bigint,
+    expected: number | bigint,
+  ) {
     const matcherName = 'toBeGreaterThan';
     const isNot = this.isNot;
     const options: MatcherHintOptions = {
@@ -234,8 +257,8 @@ const matchers: MatchersObject = {
 
   toBeGreaterThanOrEqual(
     this: MatcherState,
-    received: number,
-    expected: number,
+    received: number | bigint,
+    expected: number | bigint,
   ) {
     const matcherName = 'toBeGreaterThanOrEqual';
     const isNot = this.isNot;
@@ -292,7 +315,8 @@ const matchers: MatchersObject = {
           matcherHint(matcherName, undefined, undefined, options) +
           '\n\n' +
           printExpectedConstructorName('Expected constructor', expected) +
-          (isPrimitive(received) || Object.getPrototypeOf(received) === null
+          (getType.isPrimitive(received) ||
+          Object.getPrototypeOf(received) === null
             ? `\nReceived value has no prototype\nReceived value: ${printReceived(
                 received,
               )}`
@@ -306,7 +330,11 @@ const matchers: MatchersObject = {
     return {message, pass};
   },
 
-  toBeLessThan(this: MatcherState, received: number, expected: number) {
+  toBeLessThan(
+    this: MatcherState,
+    received: number | bigint,
+    expected: number | bigint,
+  ) {
     const matcherName = 'toBeLessThan';
     const isNot = this.isNot;
     const options: MatcherHintOptions = {
@@ -326,7 +354,11 @@ const matchers: MatchersObject = {
     return {message, pass};
   },
 
-  toBeLessThanOrEqual(this: MatcherState, received: number, expected: number) {
+  toBeLessThanOrEqual(
+    this: MatcherState,
+    received: number | bigint,
+    expected: number | bigint,
+  ) {
     const matcherName = 'toBeLessThanOrEqual';
     const isNot = this.isNot;
     const options: MatcherHintOptions = {
@@ -442,6 +474,24 @@ const matchers: MatchersObject = {
     }
 
     if (typeof received === 'string') {
+      const wrongTypeErrorMessage = `${EXPECTED_COLOR(
+        'expected',
+      )} value must be a string if ${RECEIVED_COLOR(
+        'received',
+      )} value is a string`;
+
+      if (typeof expected !== 'string') {
+        throw new Error(
+          matcherErrorMessage(
+            matcherHint(matcherName, received, String(expected), options),
+            wrongTypeErrorMessage,
+            printWithType('Expected', expected, printExpected) +
+              '\n' +
+              printWithType('Received', received, printReceived),
+          ),
+        );
+      }
+
       const index = received.indexOf(String(expected));
       const pass = index !== -1;
 
@@ -598,10 +648,7 @@ const matchers: MatchersObject = {
       promise: this.promise,
     };
 
-    if (
-      typeof received !== 'string' &&
-      (!received || typeof received.length !== 'number')
-    ) {
+    if (typeof received?.length !== 'number') {
       throw new Error(
         matcherErrorMessage(
           matcherHint(matcherName, undefined, undefined, options),
@@ -805,7 +852,7 @@ const matchers: MatchersObject = {
     const pass =
       typeof expected === 'string'
         ? received.includes(expected)
-        : expected.test(received);
+        : new RegExp(expected).test(received);
 
     const message = pass
       ? () =>

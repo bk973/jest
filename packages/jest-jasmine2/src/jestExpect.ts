@@ -5,28 +5,22 @@
  * LICENSE file in the root directory of this source tree.
  */
 
-import expect, {MatcherState} from 'expect';
-import {Global} from '@jest/types';
+/* eslint-disable local/prefer-spread-eventually */
+
+import type {Global} from '@jest/types';
+import expect = require('expect');
 import {
   addSerializer,
-  toMatchSnapshot,
   toMatchInlineSnapshot,
-  toThrowErrorMatchingSnapshot,
+  toMatchSnapshot,
   toThrowErrorMatchingInlineSnapshot,
+  toThrowErrorMatchingSnapshot,
 } from 'jest-snapshot';
-import {RawMatcherFn, Jasmine} from './types';
+import type {Jasmine, JasmineMatchersObject, RawMatcherFn} from './types';
 
 declare const global: Global.Global;
 
-type JasmineMatcher = {
-  (matchersUtil: any, context: any): JasmineMatcher;
-  compare: () => RawMatcherFn;
-  negativeCompare: () => RawMatcherFn;
-};
-
-type JasmineMatchersObject = {[id: string]: JasmineMatcher};
-
-export default (config: {expand: boolean}) => {
+export default (config: {expand: boolean}): void => {
   global.expect = expect;
   expect.setState({expand: config.expand});
   expect.extend({
@@ -47,8 +41,8 @@ export default (config: {expand: boolean}) => {
   jasmine.addMatchers = (jasmineMatchersObject: JasmineMatchersObject) => {
     const jestMatchersObject = Object.create(null);
     Object.keys(jasmineMatchersObject).forEach(name => {
-      jestMatchersObject[name] = function(
-        this: MatcherState,
+      jestMatchersObject[name] = function (
+        this: expect.MatcherState,
         ...args: Array<unknown>
       ): RawMatcherFn {
         // use "expect.extend" if you need to use equality testers (via this.equal)
@@ -59,12 +53,12 @@ export default (config: {expand: boolean}) => {
         return this.isNot
           ? negativeCompare.apply(
               null,
-              // @ts-ignore
+              // @ts-expect-error
               args,
             )
           : result.compare.apply(
               null,
-              // @ts-ignore
+              // @ts-expect-error
               args,
             );
       };

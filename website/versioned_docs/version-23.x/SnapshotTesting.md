@@ -6,16 +6,16 @@ original_id: snapshot-testing
 
 Snapshot tests are a very useful tool whenever you want to make sure your UI does not change unexpectedly.
 
-A typical snapshot test case for a mobile app renders a UI component, takes a screenshot, then compares it to a reference image stored alongside the test. The test will fail if the two images do not match: either the change is unexpected, or the screenshot needs to be updated to the new version of the UI component.
+A typical snapshot test case renders a UI component, takes a snapshot, then compares it to a reference snapshot file stored alongside the test. The test will fail if the two snapshots do not match: either the change is unexpected, or the reference snapshot needs to be updated to the new version of the UI component.
 
 ## Snapshot Testing with Jest
 
-A similar approach can be taken when it comes to testing your React components. Instead of rendering the graphical UI, which would require building the entire app, you can use a test renderer to quickly generate a serializable value for your React tree. Consider this [example test](https://github.com/facebook/jest/blob/master/examples/snapshot/__tests__/link.react.test.js) for a simple [Link component](https://github.com/facebook/jest/blob/master/examples/snapshot/Link.react.js):
+A similar approach can be taken when it comes to testing your React components. Instead of rendering the graphical UI, which would require building the entire app, you can use a test renderer to quickly generate a serializable value for your React tree. Consider this [example test](https://github.com/facebook/jest/blob/master/examples/snapshot/__tests__/link.react.test.js) for a [Link component](https://github.com/facebook/jest/blob/master/examples/snapshot/Link.react.js):
 
-```javascript
+```tsx
 import React from 'react';
-import Link from '../Link.react';
 import renderer from 'react-test-renderer';
+import Link from '../Link.react';
 
 it('renders correctly', () => {
   const tree = renderer
@@ -40,9 +40,9 @@ exports[`renders correctly 1`] = `
 `;
 ```
 
-The snapshot artifact should be committed alongside code changes, and reviewed as part of your code review process. Jest uses [pretty-format](https://github.com/facebook/jest/tree/master/packages/pretty-format) to make snapshots human-readable during code review. On subsequent test runs Jest will simply compare the rendered output with the previous snapshot. If they match, the test will pass. If they don't match, either the test runner found a bug in your code (in this case, it's `<Link>` component) that should be fixed, or the implementation has changed and the snapshot needs to be updated.
+The snapshot artifact should be committed alongside code changes, and reviewed as part of your code review process. Jest uses [pretty-format](https://github.com/facebook/jest/tree/master/packages/pretty-format) to make snapshots human-readable during code review. On subsequent test runs, Jest will compare the rendered output with the previous snapshot. If they match, the test will pass. If they don't match, either the test runner found a bug in your code (in the `<Link>` component in this case) that should be fixed, or the implementation has changed and the snapshot needs to be updated.
 
-> Note: The snapshot is directly scoped to the data you render – in our example it's `<Link />` component with page prop passed to it. This implies that even if any other file has missing props (Say, `App.js`) in the `<Link />` component, it will still pass the test as the test doesn't know the usage of `<Link />` component and it's scoped only to the `Link.react.js`. Also, Rendering the same component with different props in other snapshot test will not affect the first one, as the tests don't know about each other.
+> Note: The snapshot is directly scoped to the data you render – in our example the `<Link />` component with `page` prop passed to it. This implies that even if any other file has missing props (Say, `App.js`) in the `<Link />` component, it will still pass the test as the test doesn't know the usage of `<Link />` component and it's scoped only to the `Link.react.js`. Also, Rendering the same component with different props in other snapshot tests will not affect the first one, as the tests don't know about each other.
 
 More information on how snapshot testing works and why we built it can be found on the [release blog post](https://jestjs.io/blog/2016/07/27/jest-14.html). We recommend reading [this blog post](http://benmccormick.org/2016/09/19/testing-with-jest-snapshots-first-impressions/) to get a good sense of when you should use snapshot testing. We also recommend watching this [egghead video](https://egghead.io/lessons/javascript-use-jest-s-snapshot-testing-feature?pl=testing-javascript-with-jest-a36c4074) on Snapshot Testing with Jest.
 
@@ -52,7 +52,7 @@ It's straightforward to spot when a snapshot test fails after a bug has been int
 
 One such situation can arise if we intentionally change the address the Link component in our example is pointing to.
 
-```javascript
+```tsx
 // Updated test case with a Link to a different address
 it('renders correctly', () => {
   const tree = renderer
@@ -108,7 +108,7 @@ Inline snapshots behave identically to external snapshots (`.snap` files), excep
 
 First, you write a test, calling `.toMatchInlineSnapshot()` with no arguments:
 
-```javascript
+```tsx
 it('renders correctly', () => {
   const tree = renderer
     .create(<Link page="https://prettier.io">Prettier</Link>)
@@ -119,7 +119,7 @@ it('renders correctly', () => {
 
 The next time you run Jest, `tree` will be evaluated, and a snapshot will be written as an argument to `toMatchInlineSnapshot`:
 
-```javascript
+```tsx
 it('renders correctly', () => {
   const tree = renderer
     .create(<Link page="https://prettier.io">Prettier</Link>)
@@ -226,7 +226,7 @@ Ensure that your snapshots are readable by keeping them focused, short, and by u
 
 As mentioned previously, Jest uses [`pretty-format`](https://yarnpkg.com/en/package/pretty-format) to make snapshots human-readable, but you may find it useful to introduce additional tools, like [`eslint-plugin-jest`](https://yarnpkg.com/en/package/eslint-plugin-jest) with its [`no-large-snapshots`](https://github.com/jest-community/eslint-plugin-jest/blob/master/docs/rules/no-large-snapshots.md) option, or [`snapshot-diff`](https://yarnpkg.com/en/package/snapshot-diff) with its component snapshot comparison feature, to promote committing short, focused assertions.
 
-The goal is to make it easy to review snapshots in pull requests, and fight against the habit of simply regenerating snapshots when test suites fail instead of examining the root causes of their failure.
+The goal is to make it easy to review snapshots in pull requests, and fight against the habit of regenerating snapshots when test suites fail instead of examining the root causes of their failure.
 
 ### 2. Tests should be deterministic
 
@@ -268,7 +268,7 @@ exports[`<UserName /> should render Alan Turing`] = `
 `;
 ```
 
-Since the later describes exactly what's expected in the output, it's easy to see when it's wrong:
+Since the later describes exactly what's expected in the output, it's more clear to see when it's wrong:
 
 ```js
 exports[`<UserName /> should render null`] = `
@@ -292,7 +292,7 @@ Yes, all snapshot files should be committed alongside the modules they are cover
 
 ### Does snapshot testing only work with React components?
 
-[React](TutorialReact.md) and [React Native](TutorialReactNative.md) components are a good use case for snapshot testing. However, snapshots can capture any serializable value and should be used anytime the goal is testing whether the output is correct. The Jest repository contains many examples of testing the output of Jest itself, the output of Jest's assertion library as well as log messages from various parts of the Jest codebase. See an example of [snapshotting CLI output](https://github.com/facebook/jest/blob/master/e2e/__tests__/console.test.js) in the Jest repo.
+[React](TutorialReact.md) and [React Native](TutorialReactNative.md) components are a good use case for snapshot testing. However, snapshots can capture any serializable value and should be used anytime the goal is testing whether the output is correct. The Jest repository contains many examples of testing the output of Jest itself, the output of Jest's assertion library as well as log messages from various parts of the Jest codebase. See an example of [snapshotting CLI output](https://github.com/facebook/jest/blob/master/e2e/__tests__/console.test.ts) in the Jest repo.
 
 ### What's the difference between snapshot testing and visual regression testing?
 
@@ -308,12 +308,12 @@ Jest has been rewritten with performance in mind, and snapshot testing is not an
 
 ### How do I resolve conflicts within snapshot files?
 
-Snapshot files must always represent the current state of the modules they are covering. Therefore, if you are merging two branches and encounter a conflict in the snapshot files, you can either resolve the conflict manually or to update the snapshot file by running Jest and inspecting the result.
+Snapshot files must always represent the current state of the modules they are covering. Therefore, if you are merging two branches and encounter a conflict in the snapshot files, you can either resolve the conflict manually or update the snapshot file by running Jest and inspecting the result.
 
 ### Is it possible to apply test-driven development principles with snapshot testing?
 
-Although it is possible to write snapshot files manually, that is usually not approachable. Snapshots help figuring out whether the output of the modules covered by tests is changed, rather than giving guidance to design the code in the first place.
+Although it is possible to write snapshot files manually, that is usually not approachable. Snapshots help to figure out whether the output of the modules covered by tests is changed, rather than giving guidance to design the code in the first place.
 
 ### Does code coverage work with snapshot testing?
 
-Yes, just like with any other test.
+Yes, as well as with any other test.

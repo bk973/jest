@@ -10,6 +10,12 @@ yarn
 
 in the root directory.
 
+Fetch `backers.json` file by running
+
+```bash
+node fetchSupporters.js
+```
+
 Then, run the server via
 
 ```bash
@@ -17,7 +23,7 @@ yarn start
 Open http://localhost:3000
 ```
 
-Anytime you change the contents, just refresh the page and it's going to be updated
+Anytime you change the contents, refresh the page and it's going to be updated
 
 # Publish the website
 

@@ -6,14 +6,29 @@
  *
  */
 
-import path from 'path';
-import Runtime from 'jest-runtime';
+import * as path from 'path';
+import type {Config} from '@jest/types';
 import {normalize} from 'jest-config';
-import {Test} from 'jest-runner';
-import {Config} from '@jest/types';
+import type {Test} from 'jest-runner';
+import Runtime from 'jest-runtime';
 import SearchSource, {SearchResult} from '../SearchSource';
 
 jest.setTimeout(15000);
+
+jest.mock('graceful-fs', () => {
+  const realFs = jest.requireActual('fs');
+
+  return {
+    ...realFs,
+    statSync: path => {
+      if (path === '/foo/bar/prefix') {
+        return {isDirectory: () => true};
+      }
+
+      return realFs.statSync(path);
+    },
+  };
+});
 
 const rootDir = path.resolve(__dirname, 'test_root');
 const testRegex = path.sep + '__testtests__' + path.sep;
@@ -187,6 +202,34 @@ describe('SearchSource', () => {
         expect(relPaths.sort()).toEqual([
           path.normalize('__testtests__/test.js'),
           path.normalize('__testtests__/test.jsx'),
+        ]);
+      });
+    });
+
+    it('finds tests matching a JS with overriding glob patterns', () => {
+      const {options: config} = normalize(
+        {
+          moduleFileExtensions: ['js', 'jsx'],
+          name,
+          rootDir,
+          testMatch: [
+            '**/*.js?(x)',
+            '!**/test.js?(x)',
+            '**/test.js',
+            '!**/test.js',
+          ],
+          testRegex: '',
+        },
+        {} as Config.Argv,
+      );
+
+      return findMatchingTests(config).then(data => {
+        const relPaths = toPaths(data.tests).map(absPath =>
+          path.relative(rootDir, absPath),
+        );
+        expect(relPaths.sort()).toEqual([
+          path.normalize('module.jsx'),
+          path.normalize('noTests.js'),
         ]);
       });
     });
@@ -372,7 +415,7 @@ describe('SearchSource', () => {
     );
     const rootPath = path.join(rootDir, 'root.js');
 
-    beforeEach(done => {
+    beforeEach(async () => {
       const {options: config} = normalize(
         {
           haste: {
@@ -386,19 +429,17 @@ describe('SearchSource', () => {
               '__tests__',
               'haste_impl.js',
             ),
-            providesModuleNodeModules: [],
           },
           name: 'SearchSource-findRelatedTests-tests',
           rootDir,
         },
         {} as Config.Argv,
       );
-      Runtime.createContext(config, {maxWorkers, watchman: false}).then(
-        context => {
-          searchSource = new SearchSource(context);
-          done();
-        },
-      );
+      const context = await Runtime.createContext(config, {
+        maxWorkers,
+        watchman: false,
+      });
+      searchSource = new SearchSource(context);
     });
 
     it('makes sure a file is related to itself', () => {
@@ -409,14 +450,12 @@ describe('SearchSource', () => {
     it('finds tests that depend directly on the path', () => {
       const filePath = path.join(rootDir, 'RegularModule.js');
       const file2Path = path.join(rootDir, 'RequireRegularModule.js');
-      const loggingDep = path.join(rootDir, 'logging.js');
       const parentDep = path.join(rootDir, 'ModuleWithSideEffects.js');
       const data = searchSource.findRelatedTests(new Set([filePath]), false);
       expect(toPaths(data.tests).sort()).toEqual([
         parentDep,
         filePath,
         file2Path,
-        loggingDep,
         rootPath,
       ]);
     });
@@ -437,7 +476,7 @@ describe('SearchSource', () => {
   });
 
   describe('findRelatedTestsFromPattern', () => {
-    beforeEach(done => {
+    beforeEach(async () => {
       const {options: config} = normalize(
         {
           moduleFileExtensions: ['js', 'jsx', 'foobar'],
@@ -447,12 +486,11 @@ describe('SearchSource', () => {
         },
         {} as Config.Argv,
       );
-      Runtime.createContext(config, {maxWorkers, watchman: false}).then(
-        context => {
-          searchSource = new SearchSource(context);
-          done();
-        },
-      );
+      const context = await Runtime.createContext(config, {
+        maxWorkers,
+        watchman: false,
+      });
+      searchSource = new SearchSource(context);
     });
 
     it('returns empty search result for empty input', () => {
@@ -514,6 +552,65 @@ describe('SearchSource', () => {
         const data = searchSource.findTestsByPaths(input);
         expect(data.tests).toEqual([]);
       }
+    });
+  });
+
+  describe('findRelatedSourcesFromTestsInChangedFiles', () => {
+    const rootDir = path.resolve(
+      __dirname,
+      '../../../jest-runtime/src/__tests__/test_root',
+    );
+
+    beforeEach(async () => {
+      const {options: config} = normalize(
+        {
+          haste: {
+            hasteImplModulePath: path.resolve(
+              __dirname,
+              '../../../jest-haste-map/src/__tests__/haste_impl.js',
+            ),
+          },
+          name: 'SearchSource-findRelatedSourcesFromTestsInChangedFiles-tests',
+          rootDir,
+        },
+        {} as Config.Argv,
+      );
+      const context = await Runtime.createContext(config, {
+        maxWorkers,
+        watchman: false,
+      });
+      searchSource = new SearchSource(context);
+    });
+
+    it('return empty set if no SCM', () => {
+      const requireRegularModule = path.join(
+        rootDir,
+        'RequireRegularModule.js',
+      );
+      const sources = searchSource.findRelatedSourcesFromTestsInChangedFiles({
+        changedFiles: new Set([requireRegularModule]),
+        repos: {
+          git: new Set(),
+          hg: new Set(),
+        },
+      });
+      expect(sources).toEqual([]);
+    });
+
+    it('return sources required by tests', () => {
+      const regularModule = path.join(rootDir, 'RegularModule.js');
+      const requireRegularModule = path.join(
+        rootDir,
+        'RequireRegularModule.js',
+      );
+      const sources = searchSource.findRelatedSourcesFromTestsInChangedFiles({
+        changedFiles: new Set([requireRegularModule]),
+        repos: {
+          git: new Set('/path/to/git'),
+          hg: new Set(),
+        },
+      });
+      expect(sources).toEqual([regularModule]);
     });
   });
 });
